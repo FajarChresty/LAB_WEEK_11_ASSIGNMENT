@@ -1,0 +1,75 @@
+1. When a user takes a picture, that picture is stored in a path based on the given URI. 
+   The part of the code that handles this is:
+
+   In ProviderFileManager.kt:
+
+   fun insertPhotoToStore(fileInfo: FileInfo?) {
+       fileInfo?.let {
+           insertToStore(
+               fileInfo,
+               mediaContentHelper.getImageContentUri(),
+               mediaContentHelper.generateImageContentValues(it)
+           )
+       }
+   }
+
+   private fun insertToStore(
+       fileInfo: FileInfo, contentUri: Uri,
+       contentValues: ContentValues
+   ) {
+       executor.execute {
+           val insertedUri = contentResolver.insert(contentUri, contentValues)
+           insertedUri?.let {
+               val inputStream = contentResolver.openInputStream(fileInfo.uri)
+               val outputStream = contentResolver.openOutputStream(it)
+               if (inputStream != null && outputStream != null) {
+                   IOUtils.copy(inputStream, outputStream)
+                   inputStream.close()
+                   outputStream.close()
+               }
+           }
+       }
+   }
+
+
+2. In FileInfo.kt, there are 5 attributes.
+
+   • The first attribute (uri: Uri)
+     → This refers to the temporary internal URI created by FileProvider.
+       It is where the camera writes the result before the file is copied 
+       into the MediaStore.
+
+   • The fourth attribute (relativePath: String)
+     → This refers to the target folder inside MediaStore, for example:
+       Pictures/ or Movies/
+       This determines in which public gallery folder the file will be stored.
+
+
+3. Bonus – Chronological Order (Taking a Picture → Stored in MediaStore)
+
+   1. User taps the “Photo” button.
+      → MainActivity calls openImageCapture().
+
+   2. ProviderFileManager generates a FileInfo:
+      - Creates new empty file (img_timestamp.jpg)
+      - Generates FileProvider URI (content://…)
+      - Sets relativePath = Pictures/
+
+   3. The camera is launched using:
+      takePictureLauncher.launch(photoInfo.uri)
+
+   4. After capturing, MainActivity calls:
+      providerFileManager.insertPhotoToStore(photoInfo)
+
+   5. MediaContentHelper prepares ContentValues (name, MIME type, relativePath).
+
+   6. insertToStore() runs:
+      - Inserts metadata into MediaStore
+      - Opens InputStream from FileProvider URI
+      - Opens OutputStream to MediaStore URI
+      - Copies file via IOUtils.copy()
+
+   7. File is now saved under:
+      storage/emulated/0/Pictures/
+
+   8. Image appears in the Gallery app.
